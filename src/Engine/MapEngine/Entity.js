@@ -393,12 +393,6 @@ define(function (require) {
 	function onEntityStopMove(pkt) {
 		var entity = EntityManager.get(pkt.AID);
 		if (entity) {
-			entity.position[0] = pkt.xPos;
-			entity.position[1] = pkt.yPos;
-			entity.position[2] = Altitude.getCellHeight(pkt.xPos, pkt.yPos);
-
-			entity.resetRoute();
-
 			if (entity.action === entity.ACTION.WALK) {
 				entity.setAction({
 					action: entity.ACTION.IDLE,
@@ -407,6 +401,11 @@ define(function (require) {
 					play: true
 				});
 			}
+			
+			entity.resetRoute();
+			entity.position[0] = pkt.xPos;
+			entity.position[1] = pkt.yPos;
+			entity.position[2] = Altitude.getCellHeight(pkt.xPos, pkt.yPos);
 		}
 	}
 
@@ -1818,7 +1817,10 @@ define(function (require) {
 				//SC_MERC_QUICKEN
 				//SC_SKA
 				//SC_INCATKRATE
-				entity.toggleOpt3(pkt.index, pkt.state)
+				entity.toggleOpt3(pkt.index, pkt.state);
+				if (entity === Session.Entity && [StatusConst.SOULLINK, StatusConst.SKE].includes(pkt.index)) {
+					getModule("Renderer/MapRenderer").setNight(pkt.state === 1);
+				}
 				break;
 
 			case StatusConst.RUN: //state: 1 ON  0 OFF

@@ -603,8 +603,13 @@ define(['./SkillConst'], function(SK) {
 	
 		
 	//Prevent default skill action
+	SkillAction[SK.NV_BASIC] =
 	SkillAction[SK.TF_BACKSLIDING] =
 	SkillAction[SK.NV_TRICKDEAD] =
+	SkillAction[SK.TK_READYSTORM] =
+	SkillAction[SK.TK_READYDOWN] =
+	SkillAction[SK.TK_READYTURN] =
+	SkillAction[SK.TK_READYCOUNTER] =
 	SkillAction[SK.TK_HIGHJUMP] =
 	SkillAction[SK.TK_DODGE] =
 	SkillAction[SK.LK_TENSIONRELAX] =
@@ -615,3 +620,5 @@ define(['./SkillConst'], function(SK) {
 	return SkillAction;
 
 });	
+
+
