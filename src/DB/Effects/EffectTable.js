@@ -2851,92 +2851,47 @@ define(function( require )
 			attachedEntity: false
 		}],
 
-		142: [{ //WZ_HEAVENDRIVE
-		//Main Spike
-			type: 'QuadHorn',
-			textureFile: 'effect/stone.bmp',
-			attachedEntity: false,
-			duration: 1000,
-			height: [0.75, 1.2],
-			offsetX: [0.4, 0.6],
-			offsetY: [0.4, 0.6],
-			offsetZ: -0.1,
-			bottomSize: [0.3, 0.45],
-			blendMode: 1,
-			rotateY: [1, 360],
-			rotateZ: [-8.0, 8.0],
-			color: [1.0, 1.0, 1.0, 1.0],
-			animation: 3,
-			animationSpeed: 250,
-			animationOut: true,
-		}, {
-			type: 'QuadHorn',
-			textureFile: 'effect/stone.bmp',
-			attachedEntity: false,
-			duration: 1000,
-			height: [0.2, 0.4],
-			offsetX: [0.0, 0.0],
-			offsetY: [0.5, 0.5],
-			offsetZ: -0.1,
-			bottomSize: [0.1, 0.2],
-			blendMode: 1,
-			rotateY: [1, 360],
-			rotateZ: [-15.0, 15.0],
-			color: [1.0, 1.0, 1.0, 1.0],
-			animation: 3,
-			animationSpeed: 250,
-			animationOut: true,
-		}, {
-			type: 'QuadHorn',
-			textureFile: 'effect/stone.bmp',
-			attachedEntity: false,
-			duration: 1000,
-			height: [0.2, 0.4],
-			offsetX: [0.0, 0.5],
-			offsetY: [0.5, 1.0],
-			offsetZ: -0.1,
-			bottomSize: [0.1, 0.2],
-			blendMode: 1,
-			rotateY: [1, 360],
-			rotateZ: [-15.0, 15.0],
-			color: [1.0, 1.0, 1.0, 1.0],
-			animation: 3,
-			animationSpeed: 250,
-			animationOut: true,
-		}, {
-			type: 'QuadHorn',
-			textureFile: 'effect/stone.bmp',
-			attachedEntity: false,
-			duration: 1000,
-			height: [0.2, 0.4],
-			offsetX: [1.0, 1.2],
-			offsetY: [0.5, 0.8],
-			offsetZ: -0.1,
-			bottomSize: [0.1, 0.2],
-			blendMode: 1,
-			rotateY: [1, 360],
-			rotateZ: [-15.0, 15.0],
-			color: [1.0, 1.0, 1.0, 1.0],
-			animation: 3,
-			animationSpeed: 250,
-			animationOut: true,
-		}, {
-			type: 'QuadHorn',
-			textureFile: 'effect/stone.bmp',
-			attachedEntity: false,
-			duration: 1000,
-			height: [0.2, 0.4],
-			offsetX: [0.5, 0.7],
-			offsetY: [0.0, -0.2],
-			offsetZ: -0.1,
-			bottomSize: [0.1, 0.2],
-			blendMode: 1,
-			rotateY: [1, 360],
-			rotateZ: [-15.0, 15.0],
-			color: [1.0, 1.0, 1.0, 1.0],
-			animation: 3,
-			animationSpeed: 250,
-			animationOut: true,
+		142: [{ //EF_HEAVENDRIVE
+			type: 'FUNC',
+			func: function( Params ){
+				var QuadHorn = require('Renderer/Effects/QuadHorn');
+				var Altitude = require('Renderer/Map/Altitude');
+				for(let i=-2; i<=2; i++){
+					for(let j=-2; j<=2; j++){
+						var newParams = {
+							effect: {
+								type: 'QuadHorn',
+								textureFile: 'effect/stone.bmp',
+								attachedEntity: false,
+								duration: 1000,
+								height: [0.75, 1.2],
+								offsetX: [0.2, 0.2],
+								offsetY: [0.2, 0.2],
+								offsetZ: -0.1,
+								bottomSize: [0.4, 0.7],
+								blendMode: 1,
+								rotateY: [1, 360],
+								rotateZ: [-8.0, 8.0],
+								color: [1.0, 1.0, 1.0, 1.0],
+								animation: 3,
+								animationSpeed: 250,
+								animationOut: true,
+							},
+							Init: {},
+							Inst: {},
+						};
+						var newPos = [Params.Init.position[0]+i, Params.Init.position[1]+j];
+						Object.assign(newParams.Init, Params.Init);
+						newParams.Init.position = [newPos[0], newPos[1], Altitude.getCellHeight(newPos[0], newPos[1])];
+						newParams.Init.duration = newParams.effect.duration;
+						Object.assign(newParams.Inst, Params.Inst);
+						newParams.Inst.position = [newPos[0], newPos[1], Altitude.getCellHeight(newPos[0], newPos[1])];
+						newParams.Inst.duration = newParams.effect.duration;
+						newParams.Inst.endTick = newParams.Inst.startTick + newParams.effect.duration;
+						this.add(new QuadHorn(newParams.effect, newParams.Inst, newParams.Init), newParams);
+					}
+				}
+			}
 		}, {
 			wav:  'effect/wizard_earthspike',
 			attachedEntity: false
@@ -2951,7 +2906,7 @@ define(function( require )
 			}
 		}],
 
-		143: [{ //sonicblow at target	//EF_SONICBLOW2	Sonic Blow (Part 2/2)
+		143: [{ //EF_SONICBLOW2	Sonic Blow (Part 2/2) - sonicblow at target
 			type: 'STR',
 			file: 'sonicblow',
 			attachedEntity: true
@@ -8736,8 +8691,34 @@ define(function( require )
 		}],
 
 		732: [{	//EF_EARTHWALL	   Spike from the ground
-			wav: 'effect/wizard_earthspike'
+			type: 'QuadHorn',
+			textureFile: 'effect/stone.bmp',
+			attachedEntity: false,
+			duration: 1000,
+			height: [0.75, 1.2],
+			offsetX: [0.2, 0.2],
+			offsetY: [0.2, 0.2],
+			offsetZ: -0.1,
+			bottomSize: [0.4, 0.9],
+			blendMode: 1,
+			rotateY: [1, 360],
+			rotateZ: [-8.0, 8.0],
+			color: [1.0, 1.0, 1.0, 1.0],
+			animation: 3,
+			animationSpeed: 250,
+			animationOut: true,
+			wav: 'effect/wizard_earthspike',
+		}, {
+			type: 'FUNC',
+			attachedEntity: true,
+			func: function( Params ) {
+				var Camera = require('Renderer/Camera');
+				var start = Params.Inst.startTick;
+				var duration = 200;
+				Camera.setQuake( start, duration );
+			}
 		}],
+		
 		//733: [{}],	//EF_SOULBREAKER4	   Fluffy Ball flying by
 
 		734: [{	//EF_CHAINL_STR	Chain Lightning
