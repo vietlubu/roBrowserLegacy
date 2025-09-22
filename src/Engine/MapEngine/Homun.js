@@ -93,9 +93,7 @@ define(function (require) {
 			pkt.life = entity.life;
 		}
 
-		HomunInformations.append();
 		HomunInformations.setInformations(pkt);
-		HomunInformations.startAI();
 
 		SkillListMH.homunculus.setPoints(pkt.SKPoint);
 	}
@@ -132,6 +130,8 @@ define(function (require) {
 		switch (pkt.state) {
 			case 0:
 				Session.homunId = pkt.GID;
+				HomunInformations.append();
+				HomunInformations.startAI();
 				break;
 
 			case 1:

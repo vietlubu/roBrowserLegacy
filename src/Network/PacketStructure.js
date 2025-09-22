@@ -6134,7 +6134,10 @@ define(['Utils/BinaryWriter', './PacketVerManager', 'Utils/Struct', 'Core/Config
 	PACKET.ZC.WARPLIST = function PACKET_ZC_WARPLIST(fp, end) {
 		this.SKID = fp.readUShort();
 		this.mapName = (function() {
-			var count = 4;
+			var count;
+
+			count = 4;
+
 			var out = new Array(count);
 			for (var i = 0; i < count; ++i) {
 				out[i] = fp.readBinaryString(16);
@@ -6143,6 +6146,23 @@ define(['Utils/BinaryWriter', './PacketVerManager', 'Utils/Struct', 'Core/Config
 		})();
 	};
 	PACKET.ZC.WARPLIST.size = 68;
+	
+	// 0xabe
+	PACKET.ZC.WARPLIST2 = function PACKET_ZC_WARPLIST2(fp, end) {
+		this.SKID = fp.readUShort();
+		this.mapName = (function() {
+			var count;
+
+			count = (end - fp.tell()) / 16 | 0;
+
+			var out = new Array(count);
+			for (var i = 0; i < count; ++i) {
+				out[i] = fp.readBinaryString(16);
+			}
+			return out;
+		})();
+	};
+	PACKET.ZC.WARPLIST2.size = -1;
 
 
 	// 0x11e

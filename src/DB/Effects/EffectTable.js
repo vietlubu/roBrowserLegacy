@@ -6134,7 +6134,7 @@ define(function( require )
 		}],
 
 		368: [{	//EF_REDBODY	Berserk
-			wav:  'effect/\xef\x82\xb9\xef\x83\xb6\xef\x82\xbc\xef\x82\xad\xc5\xa9',
+			wav:  'effect/\xb9\xf6\xbc\xad\xc5\xa9',
 			attachedEntity: true
 			//shake screen
 		}],
@@ -11431,6 +11431,229 @@ define(function( require )
 			size: 50,
 			zOffset: 1,
 			zIndex: 1
+		}],
+		
+		'ef_parasite_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/parasite_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_stone_shooter_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/stone_shooter_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_wootan_shooter_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/wootan_shooter_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_peach_tree_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/peach_tree_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_hermit_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/ginseng_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_canon_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/canon_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_canon1_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/canon_bullet_1',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_canon2_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/canon_bullet_2',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_canon3_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/canon_bullet_3',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_tanee_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/lady_tanee_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_ragged_projectile': [{
+			type: '3D',
+			alphaMax: 1,
+			angle: 180,
+			attachedEntity: true,
+			duration: 140,
+			fadeIn: true,
+			fadeOut: true,
+			spriteName: '../npc/ragged_zombie_bullet',
+			toSrc: true,
+			rotateToTarget: true,
+			rotateWithCamera: true,
+			size: 100,
+			zOffset: 1,
+			zIndex: 1
+		}],
+		
+		'ef_mandragora_attack': [{
+			type: 'SPR',
+			file: '../npc/mandragora_atk',
+			attachedEntity: false
+		}],
+		
+		'ef_hydra_attack': [{
+			type: 'SPR',
+			file: '../npc/hydra_atk',
+			attachedEntity: false
+		}],
+		
+		'ef_odium_attack': [{
+			type: 'SPR',
+			file: '../npc/tha_odium_ef',
+			attachedEntity: false
+		}],
+		
+		'ef_drosera_attack': [{
+			type: 'SPR',
+			file: '../npc/drosera_bullet',
+			attachedEntity: false
+		}],
+		
+		'ef_mavka_attack': [{
+			type: 'SPR',
+			file: '../npc/mavka_bullet',
+			attachedEntity: false
+		}],
+		
+		'ef_entweihen_attack': [{
+			type: 'SPR',
+			file: '../npc/entweihen_bullet',
+			attachedEntity: false
 		}],
 
 		'ef_c_marker1': [{
