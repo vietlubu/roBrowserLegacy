@@ -14345,6 +14345,26 @@ define(['Utils/BinaryWriter', './PacketVerManager', 'Utils/Struct', 'Core/Config
 	};
 	PACKET.ZC.PROPERTY_HOMUN3.size = 73;
 
+	// 0xb32
+	PACKET.ZC.SKILLINFO_LIST2 = function PACKET_ZC_SKILLINFO_LIST2(fp, end) {
+		this.skillList = (function() {
+			var i, count=(end-fp.tell())/15|0, out=new Array(count);
+			for (i = 0; i < count; ++i) {
+				out[i] = {};
+				out[i].SKID = fp.readShort();
+				out[i].type = fp.readLong();
+				out[i].level = fp.readShort();
+				out[i].spcost = fp.readShort();
+				out[i].attackRange = fp.readShort();
+				out[i].upgradable = fp.readChar();
+				out[i].level2 = fp.readShort();
+
+			}
+			return out;
+		})();
+	};
+	PACKET.ZC.SKILLINFO_LIST2.size = -1;
+
 	//0xb37
 	PACKET.ZC.EQUIPWIN_MICROSCOPE_V7 = function PACKET_ZC_EQUIPWIN_MICROSCOPE_V7(fp, end) {
 		this.characterName = fp.readString(NAME_LENGTH);
@@ -15244,7 +15264,20 @@ define(['Utils/BinaryWriter', './PacketVerManager', 'Utils/Struct', 'Core/Config
 		return pkt_buf;
 	};
 
-
+	// 0xb1a // New "Use Skill" packet. Fixes issues with Casting.
+	PACKET.ZC.USESKILL_ACK3 = function PACKET_ZC_USESKILL_ACK3(fp, end) {
+		this.AID = fp.readULong();			// src id
+		this.targetID = fp.readULong();		// dst id
+		this.xPos = fp.readShort();			// x
+		this.yPos = fp.readShort();			// y
+		this.SKID = fp.readUShort();		// skill id
+		this.property = fp.readULong();		// property (element)
+		this.delayTime = fp.readULong();	// delaytime
+		this.disposable = fp.readUChar();	// is disposable
+		this.attackMT = fp.readULong();		// attackMT
+	};
+	PACKET.ZC.USESKILL_ACK3.size = 32;
+	
 	/**
 	 * Export
 	 */
