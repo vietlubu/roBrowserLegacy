@@ -32,6 +32,8 @@ define(function(require)
 	var cssText            = require('text!./ChatBox.css');
 	var Commands     = require('Controls/ProcessCommand');
 	var ChatBoxSettings  = require('UI/Components/ChatBoxSettings/ChatBoxSettings');
+	var HTMLEntity        = require('Utils/HTMLEntity');
+	var getModule          = require;
 
 
 	/**
@@ -217,19 +219,56 @@ define(function(require)
 			return false;
 		});
 
-		this.ui.find('.input .message').blur(function(){
+		this.ui.find('.input-chatbox').blur(function(){
 			Events.setTimeout(function(){
-				if (!document.activeElement.tagName.match(/input|select|textarea/i)) {
-					this.ui.find('.input .message').focus();
+				var active = document.activeElement;
+				var movedInsideChatbox = active && jQuery(active).closest('#chatbox').length;
+				var isTextInput = active && active.tagName && active.tagName.match(/input|select|textarea/i);
+				if (!movedInsideChatbox && !isTextInput) {
+					this.ui.find('.input-chatbox').focus();
 				}
 			}.bind(this), 1);
 		}.bind(this));
 
-		this.ui.find('.input .message')[0].maxLength = MAX_LENGTH;
+		this.ui.find('.input-chatbox')[0].maxLength = MAX_LENGTH;
+		this.ui.find('.input-chatbox').on('paste', function(event) {
+			// Contenteditable ignores maxLength; enforce plain-text paste + length limit.
+			event.preventDefault();
+
+			var clipboard = (event.originalEvent || event).clipboardData;
+			var pastedText = clipboard ? clipboard.getData('text/plain') : '';
+			if (!pastedText) {
+				return false;
+			}
+
+			pastedText = pastedText.replace(/\u00A0/g, ' ');
+
+			var currentText = extractChatMessage(this.ui.find('.input-chatbox'));
+			var remaining = MAX_LENGTH - currentText.length;
+			if (remaining <= 0) {
+				return false;
+			}
+
+			var toInsert = pastedText.substr(0, remaining);
+
+			// Insert at caret if possible; fallback to append.
+			if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+				document.execCommand('insertText', false, toInsert);
+			} else {
+				var node = document.createTextNode(toInsert);
+				this.ui.find('.input-chatbox')[0].appendChild(node);
+			}
+
+			return false;
+		}.bind(this));
 
 		this.ui.find('.input .username').blur(function(){
 			Events.setTimeout(function(){
-				if (!document.activeElement.tagName.match(/input|select|textarea/i)) {
+				var active = document.activeElement;
+				var movedInsideChatbox = active && jQuery(active).closest('#chatbox').length;
+				var isTextInput = active && active.tagName && active.tagName.match(/input|select|textarea/i);
+				var isChatMessage = active === this.ui.find('.input-chatbox')[0];
+				if (!movedInsideChatbox && !isTextInput && !isChatMessage) {
 					this.ui.find('.input .username').focus();
 				}
 			}.bind(this), 1);
@@ -415,7 +454,7 @@ define(function(require)
 		}
 
 		this.ui.find('.content').empty();
-		this.ui.find('.input .message').val('');
+		this.ui.find('.input-chatbox').html('');
 		this.ui.find('.input .username').val('');
 
 		_historyMessage.clear();
@@ -553,7 +592,7 @@ define(function(require)
 	ChatBox.onAppend = function OnAppend()
 	{
 		// Focus the input
-		this.ui.find('.input .message').focus();
+		this.ui.find('.input-chatbox').focus();
 
 		var content = this.ui.find('.content.active');
 		content[0].scrollTop = content[0].scrollHeight;
@@ -601,8 +640,8 @@ define(function(require)
 			return BattleMode.process(keyId);
 		}
 /*
-		var messageBox = this.ui.find('.input .message');
-		var text       = messageBox.val();
+		var messageBox = this.ui.find('.input-chatbox');
+		var text       = messageBox.html();
 
 		var messageBoxUser = this.ui.find('.input .username');
 		var text2       = messageBoxUser.val();
@@ -611,7 +650,7 @@ define(function(require)
 		// If there is no change, send the shortcut.
 		Events.setTimeout(function(){
 			// Nothing rendered, can process the shortcut
-			if ((messageBox.val() === text) && (messageBoxUser.val() === text2)) {
+			if ((messageBox.html() === text) && (messageBoxUser.val() === text2)) {
 				BattleMode.process(keyId);
 			}
 		}.bind(this), 4);*/
@@ -628,15 +667,115 @@ define(function(require)
 	 */
 	ChatBox.onKeyDown = function OnKeyDown( event )
 	{
-		var messageBox = this.ui.find('.input .message');
+		var messageBox = this.ui.find('.input-chatbox');
 		var nickBox    = this.ui.find('.input .username');
 		this.ui.find('.header tr td div.on input').on('keyup', function(){
 			ChatBoxSettings.updateTab(ChatBox.activeTab, this.value);
 		});
+
+		var isChatInputFocused = (document.activeElement === messageBox[0] || document.activeElement === nickBox[0]);
+
 		switch (event.which) {
 
 			//  Battle mode system (Includes F1-F24, 0-9, A-Z, ALT, SHIFT, CTRL)
 			default:
+				if (isChatInputFocused) {
+					// Allow battle-mode F-keys and Escape to work while typing.
+					if (event.which >= KEYS.F1 && event.which <= KEYS.F24) {
+						// F11/F12 are global functions (toggle UI / screenshot); let them bubble
+						// but block browser defaults (fullscreen/devtools).
+						if (event.which === KEYS.F11 || event.which === KEYS.F12) {
+							event.preventDefault();
+							return true;
+						}
+
+						if (ChatBox.processBattleMode(event.which)) {
+							event.preventDefault();
+							event.stopImmediatePropagation();
+							return false;
+						}
+						// Even if unbound, block browser F-key defaults.
+						event.preventDefault();
+						event.stopImmediatePropagation();
+						return false;
+					}
+
+					// AltGr (Ctrl+Alt on some layouts) should be treated as text input.
+					if (event.getModifierState && event.getModifierState('AltGraph')) {
+						event.stopImmediatePropagation();
+						return true;
+					}
+
+					// Allow CTRL-combinations (shortcuts) to work while chat is open,
+					// but preserve common text-editing combos inside the input.
+					if (event.ctrlKey || KEYS.CTRL) {
+						var isEditingCombo =
+							event.which === KEYS.C ||
+							event.which === KEYS.V ||
+							event.which === KEYS.X ||
+							event.which === KEYS.A ||
+							event.which === KEYS.Z ||
+							event.which === KEYS.Y;
+
+						if (!isEditingCombo) {
+							if (ChatBox.processBattleMode(event.which)) {
+								event.preventDefault();
+								event.stopImmediatePropagation();
+								return false;
+							}
+
+							// Block browser/system CTRL defaults (refresh, close tab, etc.),
+							// but let the game/UI receive the shortcut.
+							event.preventDefault();
+							return true;
+						}
+
+						// Editing combos: keep within the input and don't bubble to game.
+						event.stopImmediatePropagation();
+						return true;
+					}
+
+					// Allow ALT-combinations to work while chat is open, but keep basic
+					// caret/navigation keys local to the input.
+					if (event.altKey || KEYS.ALT) {
+						var isAltEditingCombo =
+							event.which === KEYS.LEFT ||
+							event.which === KEYS.RIGHT ||
+							event.which === KEYS.UP ||
+							event.which === KEYS.DOWN ||
+							event.which === KEYS.BACKSPACE ||
+							event.which === KEYS.DELETE ||
+							event.which === KEYS.HOME ||
+							event.which === KEYS.END;
+
+						if (!isAltEditingCombo) {
+							if (ChatBox.processBattleMode(event.which)) {
+								event.preventDefault();
+								event.stopImmediatePropagation();
+								return false;
+							}
+
+							// Block browser ALT defaults (menus/navigation) but let the
+							// game/UI receive the shortcut.
+							event.preventDefault();
+							return true;
+						}
+
+						// Navigation combos: keep within the input.
+						event.stopImmediatePropagation();
+						return true;
+					}
+
+					if (event.which === KEYS.ESCAPE || event.key === "Escape") {
+						// Let UIManager/game handle Escape.
+						return true;
+					}
+
+					// Let the browser handle text input, but don't bubble to game controls.
+					event.stopImmediatePropagation();
+					return true;
+				}
+
 				if ((event.target.tagName && !event.target.tagName.match(/input|select|textarea/i))
 					|| (event.which >= KEYS.F1 && event.which <= KEYS.F24)
 					|| (event.which >= KEYS[1] && event.which <= KEYS[9])   //  Numbers 0-9 - MicromeX
@@ -667,7 +806,7 @@ define(function(require)
 			case KEYS.UP:
 				if (!jQuery('#NpcMenu').length) {
 					if (document.activeElement === messageBox[0]) {
-						messageBox.val(_historyMessage.previous()).select();
+						messageBox.html(_historyMessage.previous()).select();
 						break;
 					}
 
@@ -682,7 +821,7 @@ define(function(require)
 			case KEYS.DOWN:
 				if (!jQuery('#NpcMenu').length) {
 					if (document.activeElement === messageBox[0]) {
-						messageBox.val(_historyMessage.next()).select();
+						messageBox.html(_historyMessage.next()).select();
 						break;
 					}
 
@@ -702,7 +841,7 @@ define(function(require)
 
 			// Send message
 			case KEYS.ENTER:
-				if (document.activeElement.tagName === 'INPUT' &&
+				if (document.activeElement.className === 'message input-chatbox' &&
 					document.activeElement !== messageBox[0]) {
 					return true;
 				}
@@ -721,7 +860,7 @@ define(function(require)
 	};
 
 	ChatBox.toggleChat = function toggleChat(){
-		var messageBox = this.ui.find('.input .message');
+		var messageBox = this.ui.find('.input-chatbox');
 
 		if (document.activeElement.tagName === 'INPUT' &&
 		    document.activeElement !== messageBox[0]) {
@@ -744,14 +883,15 @@ define(function(require)
 	{
 		var input = this.ui.find('.input');
 		var $user = input.find('.username');
-		var $text = input.find('.message');
+		var $text = input.find('.input-chatbox');
 
 		var user = $user.val();
-		var text = $text.val();
+		var text = extractChatMessage($text);
+		var trimmedText = text.replace(/\u00A0/g, ' ').trim();
 		var isChatOn = false;
 
 		// Battle mode
-		if (!text.length) {
+		if (!trimmedText.length) {
 			input.toggle();
 			this.ui.find('.battlemode').toggle();
 			if (input.is(':visible')) {
@@ -767,26 +907,46 @@ define(function(require)
 		}
 
 		// Private message
-		if (user.length && text[0] !== '/') {
+		if (user.length && trimmedText[0] !== '/') {
 			this.PrivateMessageStorage.nick = user;
-			this.PrivateMessageStorage.msg  = text;
+			this.PrivateMessageStorage.msg  = trimmedText;
 			_historyNickName.push(user);
 			_historyNickName.previous();
 		}
 
 		// Save in history
-		_historyMessage.push(text);
+		_historyMessage.push(trimmedText);
 
-		$text.val('');
+		$text.html('');
 
 		// Command
-		if (text[0] === '/') {
-			Commands.processCommand.call(this, text.substr(1) );
+		if (trimmedText[0] === '/') {
+			Commands.processCommand.call(this, trimmedText.substr(1) );
 			return;
 		}
 
-		this.onRequestTalk( user, text, ChatBox.sendTo );
+		this.onRequestTalk( user, trimmedText, ChatBox.sendTo );
 	};
+
+	/**
+	 * Extract plain chat text from the contenteditable input while preserving item links.
+	 * Replaces `.item-link` spans with their `data-item` payload and strips any remaining markup.
+	 */
+	function extractChatMessage($input)
+	{
+		var clone = $input.clone();
+
+		clone.find('span.item-link').each(function() {
+			var itemData = jQuery(this).attr('data-item') || jQuery(this).data('item') || '';
+			itemData = HTMLEntity.decodeHTMLEntities(String(itemData));
+			jQuery(this).replaceWith(document.createTextNode(itemData));
+		});
+
+		var result = clone.text();
+		result = HTMLEntity.decodeHTMLEntities(result);
+		result = result.replace(/\u00A0/g, ' ');
+		return result;
+	}
 
 
 	/**
@@ -800,6 +960,14 @@ define(function(require)
 	 */
 	ChatBox.addText = function addText(text, colorType, filterType, color, override)
 	{
+		// parse as many <ITEMLINK> or <ITEML> as possible and replace with clickable item link, but first decode the link to get the item id
+		text = text.replace(/<ITEMLINK>.*?<\/ITEMLINK>|<ITEML>.*?<\/ITEML>|<ITEM>.*?<\/ITEM>/gi, function(match) {
+			let item = DB.parseItemLink(match);
+			let span = '<span data-item="' + match + '" class="item-link" style="color:#FFFF63;">&lt;' + item.name + '&gt;</span>';
+			override = true;
+			return span;
+		});
+
 		// Backward compatibility for older calls without filter
 		if(isNaN(filterType)){
 			filterType = ChatBox.FILTER.PUBLIC_LOG;
@@ -1103,7 +1271,7 @@ define(function(require)
 	{
 		return function onChangeTargetMessageClosure()
 		{
-			var $input = ChatBox.ui.find('.input .message');
+			var $input = ChatBox.ui.find('.input-chatbox');
 
 			$input.removeClass('guild party');
 
@@ -1157,6 +1325,36 @@ define(function(require)
 		}
 	  }
 
+	
+	
+	// CLICKABLE ITEM → OPEN ITEMINFO
+	jQuery(document).on('click', '.item-link', function (event) {
+
+		// If the link is inside the chat input, keep focus there and do nothing.
+		if (jQuery(this).closest('#chatbox .input-chatbox').length) {
+			event.stopImmediatePropagation();
+			return false;
+		}
+
+		let item = DB.parseItemLink(jQuery(this).data('item'));
+		if (!item) return;	// item not found
+
+		let ItemInfo = getModule('UI/Components/ItemInfo/ItemInfo');
+
+		ItemInfo.append();
+		ItemInfo.setItem(item);
+	});
+	
+	ChatBox.insertText = function(text) {
+		// Find chat input
+		var input = this.ui.find('.input-chatbox');
+
+		// Append text
+		input.append(document.createTextNode(text));
+
+		// Focus input
+		input.focus();
+	};
 
 	/**
 	 * Create componentand export it

@@ -132,7 +132,7 @@ define(function (require) {
 					EffectManager.spam(EF_Init_Par);
 				}
 			}
-			if (entity.objecttype === Entity.TYPE_NPC || Entity.TYPE_WARP) {
+			if (entity.objecttype === Entity.TYPE_NPC || entity.objecttype === Entity.TYPE_NPC2 || entity.objecttype === Entity.TYPE_WARP) {
 				const mapName = getModule("Renderer/MapRenderer").currentMap.replace('.gat', '').toLowerCase();
 				let signboardData = DB.findSignboard(mapName, entity.position[0], entity.position[1], 1);
 				if (signboardData) {
@@ -333,13 +333,13 @@ define(function (require) {
 	 */
 	function onEntityMove(pkt) {
 		var entity = EntityManager.get(pkt.GID);
-		if (entity) {
-			//entity.position[0] = pkt.MoveData[0];
-			//entity.position[1] = pkt.MoveData[1];
-			//entity.position[2] = Altitude.getCellHeight(  pkt.MoveData[0],  pkt.MoveData[1] );
-			entity.walkTo(pkt.MoveData[0], pkt.MoveData[1], pkt.MoveData[2], pkt.MoveData[3]);
+			if (entity) {
+				//entity.position[0] = pkt.MoveData[0];
+				//entity.position[1] = pkt.MoveData[1];
+				//entity.position[2] = Altitude.getCellHeight(  pkt.MoveData[0],  pkt.MoveData[1] );
+				entity.walkTo(pkt.MoveData[0], pkt.MoveData[1], pkt.MoveData[2], pkt.MoveData[3], undefined, pkt.moveStartTime);
+			}
 		}
-	}
 
 
 	/**
@@ -796,7 +796,13 @@ define(function (require) {
 		type = ChatBox.TYPE.PUBLIC;
 		entity = EntityManager.get(pkt.GID);
 
+		ChatBox.addText(pkt.msg, type, ChatBox.FILTER.PUBLIC_CHAT, null, false);
+
 		if (entity) {
+			pkt.msg = pkt.msg.replace(/<ITEMLINK>.*?<\/ITEMLINK>|<ITEML>.*?<\/ITEML>|<ITEM>.*?<\/ITEM>/gi, function(match) {
+				return '<' + DB.getItemNameFromLink(match) + '>';
+			});
+
 			entity.dialog.set(pkt.msg);
 
 			// Should not happen
@@ -808,7 +814,6 @@ define(function (require) {
 			}
 		}
 
-		ChatBox.addText(pkt.msg, type, ChatBox.FILTER.PUBLIC_CHAT);
 	}
 
 

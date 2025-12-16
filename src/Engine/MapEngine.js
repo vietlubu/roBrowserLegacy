@@ -69,6 +69,7 @@ define(function( require )
 	var LaphineUpg		 = require('UI/Components/LaphineUpg/LaphineUpg');
 	var Rodex            = require('UI/Components/Rodex/Rodex');
 	var RodexIcon        = require('UI/Components/Rodex/RodexIcon');	
+	var PCGoldTimer      = require('UI/Components/PCGoldTimer/PCGoldTimer');
 	var Refine           = require('UI/Components/Refine/Refine');
 	var PetInformations  = require('UI/Components/PetInformations/PetInformations');
 	var HomunInformations = require('UI/Components/HomunInformations/HomunInformations');
@@ -253,6 +254,7 @@ define(function( require )
 			require('./MapEngine/UIOpen').call();
 			require('./MapEngine/Quest').call();
 			require('./MapEngine/Rodex').call();
+			require('./MapEngine/PCGoldTimer').call();
 			if(Configs.get('enableCashShop')){
 				require('./MapEngine/CashShop').call();
 			}
@@ -283,6 +285,7 @@ define(function( require )
 			SkillListMH.mercenary.prepare();
 			Rodex.prepare();
 			RodexIcon.prepare();
+			PCGoldTimer.prepare();
 			Navigation.prepare();
 
 			if(Configs.get('enableMapName')){
@@ -548,8 +551,9 @@ define(function( require )
 	 * Changing map, loading new map
 	 *
 	 * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
+	 * @param {bool} force reload map renderer teleporting to same map
 	 */
-	function onMapChange( pkt )
+	function onMapChange( pkt , force = false )
 	{
 		jQuery(window).off('keydown.map');
 
@@ -678,7 +682,7 @@ define(function( require )
 			}
 		};
 
-		MapRenderer.setMap( pkt.mapName );
+		MapRenderer.setMap( pkt.mapName, force );
 	}
 
 
@@ -1226,5 +1230,7 @@ define(function( require )
 	/**
 	 * Export
 	 */
+	MapEngine.onMapChange = onMapChange;
+
 	return MapEngine;
 });

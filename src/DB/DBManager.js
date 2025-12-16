@@ -42,10 +42,15 @@ define(function (require) {
 	var RandomOption = require('DB/Items/ItemRandomOptionTable');
 	var SKID = require('./Skills/SkillConst');
 	var SkillDescription = require('./Skills/SkillDescription');
+	var SkillInfo = require('./Skills/SkillInfo');	
+	var SkillTreeView = require('./Skills/SkillTreeView');
 	var JobHitSoundTable = require('./Jobs/JobHitSoundTable');
 	var WeaponTrailTable = require('./Items/WeaponTrailTable');
 	var TownInfo = require('./TownInfo');
+	var StatusInfo = require('./Status/StatusInfo');
+	var SC = require('./Status/StatusConst');
 	var XmlParse = require('Vendors/xmlparse');
+	var Base62 = require('Utils/Base62');
 
 	//Pet
 	var PetEmotionTable = require('./Pets/PetEmotionTable')
@@ -202,6 +207,13 @@ define(function (require) {
 	var QuestInfo = {};
 
 	/**
+	 * @var User charpage init
+	 */
+	var servers = Configs.get('servers', []);
+	var langType = (servers[0] && servers[0].langtype) ? parseInt(servers[0].langtype, 10) : 1;
+	var userCharpage = TextEncoding.detectEncodingByLangtype(langType, Configs.get('disableKorean'));
+
+	/**
 	 * Initialize DB
 	 */
 	DB.init = function init() {
@@ -233,7 +245,17 @@ define(function (require) {
 		// TODO: load these load files by PACKETVER
 		if (Configs.get('loadLua')) {
 			// Item
-			loadItemInfo('System/itemInfo.lub', null, onLoad()); // 2012-04-10
+			var iteminfoNames = [];
+			var customII = Configs.get('customItemInfo',[]);
+
+			if( customII !== undefined && customII !== [] && customII.length > 0){ // add custom client info table
+				iteminfoNames = iteminfoNames.concat(customII);
+				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad(), true);
+			} else { 
+				iteminfoNames = iteminfoNames.concat(getSystemAliases('System/itemInfo.lub'));
+				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
+			}
+			
 			loadLuaTable([DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'], 'AccNameTable', function (json) { HatTable = json; }, onLoad());
 			loadLuaTable([DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'], 'RobeNameTable', function (json) { RobeTable = json; }, onLoad());
 			loadLuaTable([DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'], 'JobNameTable', function (json) { MonsterTable = json; }, onLoad());
@@ -245,11 +267,11 @@ define(function (require) {
 			
 			// Skill
 			loadLuaTable([DB.LUA_PATH + 'skillinfoz/skillid.lub', DB.LUA_PATH + 'skillinfoz/skilldescript.lub'], 'SKILL_DESCRIPT', function (json) { SkillDescription = json; }, onLoad());
-			// TODO: DB.LUA_PATH + skillinfoz/skillinfolist.lub	- Replaces part of DB/Skills/SkillInfo.js (if we can find a txt version, otherwise just overrides)
-			// TODO: DB.LUA_PATH + skillinfoz/skilltreeview.lub	- Replaces DB/Skills/SkillTreeView.js
+			loadSkillInfoList(DB.LUA_PATH + 'skillinfoz/skillinfolist.lub', null, onLoad()); // TODO: txt version
+			loadSkillTreeView(DB.LUA_PATH + 'skillinfoz/skilltreeview.lub', null, onLoad());
 			
 			// Status
-			// TODO: DB.LUA_PATH + stateicon/stateiconinfo.lub
+			loadStateIconInfo(DB.LUA_PATH + 'stateicon/', null, onLoad());
 	
 			// Legacy Navigation
 			if(PACKETVER.value >= 20111010){
@@ -278,7 +300,10 @@ define(function (require) {
 			
 			// MapName
 			if( Configs.get('enableMapName')  /*PACKETVER.value >= 20190605*/){ // We allow this feature to be enabled on any version due to popular demand
-				loadMapTbl('System/mapInfo.lub', function (json) { for (const key in json) { if (json.hasOwnProperty(key)) { MapInfo[key] = json[key]; } } updateMapTable(); }, onLoad());
+				tryLoadLuaAliases(loadMapTbl, getSystemAliases('System/mapInfo.lub'), function (json) { 
+					for (const key in json) { if (json.hasOwnProperty(key)) { MapInfo[key] = json[key]; } } 
+					updateMapTable(); 
+				}, onLoad());
 			}
 			
 			// EntitySignBoard
@@ -291,7 +316,7 @@ define(function (require) {
 			}
 			
 			// Quest
-			loadQuestInfo('System/OngoingQuestInfoList.lub', null, onLoad());
+			tryLoadLuaAliases(loadQuestInfo, getSystemAliases('System/OngoingQuestInfoList.lub'), null, onLoad());
 			// TODO: System/RecommendedQuests.lub
 			
 			// WoldMap
@@ -302,7 +327,7 @@ define(function (require) {
 			// TODO: System/achievements.lub
 			
 			// Town Info
-			// TODO: System/Towninfo.lub	- Replaces DB/TownInfo.js
+			loadTownInfoFile('System/Towninfo.lub', null, onLoad());
 		} else {
 			// Item
 			loadTable('data/num2itemdisplaynametable.txt', '#', 2, function (index, key, val) { (ItemTable[key] || (ItemTable[key] = {})).unidentifiedDisplayName = val.replace(/_/g, " "); }, onLoad());
@@ -355,6 +380,24 @@ define(function (require) {
 
 	async function startLua() {
 		lua = await CLua.Lua.create();
+	}
+
+	/**
+	 * get System folder variants
+	 */
+	function getSystemAliases(basePath) {
+		basePath = basePath.replace(/\.(lub|lua)$/i, ''); // Prevents extension been passed
+
+		var suffixes = ['', '_true', '_sak', '_Sakray' ]; // Priority order
+		var extensions = ['.lub', '.lua'];
+		var fileList = [];
+
+		for (var s = 0; s < suffixes.length; s++) {
+			for (var e = 0; e < extensions.length; e++) {
+				fileList.push(basePath + suffixes[s] + extensions[e]);
+			}
+		}
+		return fileList;
 	}
 
 	/**
@@ -459,18 +502,71 @@ define(function (require) {
 		);
 	}
 
-	function loadQuestInfo(filename, callback, onEnd) {
+
+	/**
+	* Load Town Info file
+	*
+	* @param {string} filename - relative file path (e.g., 'System/Towninfo.lub')
+	* @param {function} callback - (Unused/Legacy)
+	* @param {function} onEnd - Function to run when done
+	*/
+	function loadTownInfoFile(filename, callback, onEnd) {
 		Client.loadFile(filename,
 			async function (file) {
 				console.log('Loading file "' + filename + '"...');
-
 				try {
+					let buffer = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;
+					// get context, a proxy. It will be used to interact with lua conveniently
+					const ctx = lua.ctx;
+					// create decoders
+					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
+					
+					// create AddTownInfo required functions in context
+					ctx.AddTownInfo = function AddTownInfo(mapName, name, X, Y, TYPE) {
+						mapName = iso88591Decoder.decode(mapName);
+						TownInfo[mapName] = [];
+						TownInfo[mapName].push({
+							Name: userStringDecoder.decode(name), 
+							X: X,
+							Y: Y,
+							Type: TYPE
+						});
+    					};
+					// mount file
+					lua.mountFile(filename, buffer);
+					// execute file
+					await lua.doFile(filename);
+					// execute main lua function
+					lua.doStringSync(`main()`);
+				} catch (error) {
+					console.error('[loadTownInfoFile] Error: ', error);
+				} finally {
+					// release file from memmory
+					lua.unmountFile(filename);
+					// call onEnd
+					onEnd();
+				}
+			},
+			onEnd
+		);
+	}
+
+	function loadQuestInfo(filename, callback, onEnd) {
+		const loadPromise = new Promise((resolve, reject) => {
+			Client.loadFile(filename, resolve, reject);
+		});
+		
+		loadPromise.then(async (file) => {
+				console.log('Loading file "' + filename + '"...');
+
+			try {
 				// check if file is ArrayBuffer and convert to Uint8Array if necessary
 				let buffer = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;
 
 				// create decoders
 				let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
-				let userStringDecoder = new TextEncoding.TextDecoder('euc-kr'); // TODO: Add keys to config
+				let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
 
 				// get context, a proxy. It will be used to interact with lua conveniently
 				const ctx = lua.ctx;
@@ -510,9 +606,9 @@ define(function (require) {
 				};
 
 				// mount file
-				lua.mountFile('OngoingQuestInfoList.lub', buffer);
+				lua.mountFile(filename, buffer);
 				// execute file
-				await lua.doFile('OngoingQuestInfoList.lub');
+				await lua.doFile(filename);
 
 				// create and execute our own main function
 				lua.doStringSync(`
@@ -571,17 +667,74 @@ define(function (require) {
 
 				main_quest()
 					`);
-				} catch (error) {
-					console.error('[loadQuestInfo] Error: ', error);
-				} finally {
-					// release file from memmory
-					lua.unmountFile('OngoingQuestInfoList.lub');
-					// call onEnd
+			} catch (error) {
+				console.error('[loadQuestInfo] Error: ', error);
+			} finally {
+				// release file from memmory
+				lua.unmountFile(filename);
+				// call onEnd
+				onEnd(true);
+			}
+		}).catch((error) => {
+			if (typeof onEnd === 'function') {
+				onEnd(false);
+			}
+		});
+	}
+
+	/**
+	* Attempt to load files sequentially (Recursive - Fallback).
+	* Stop immediately on the first success.
+	*
+	* @param {Function} loaderFunc
+	* @param {Array<String>} file name aliases array.
+	* @param {Function} dataCallback - Callback to process the loaded data (the original `callback`, e.g., the one that receives the `json` from mapInfo).
+	* @param {Function} onEnd - Called when the entire process finishes (success or total failure).
+	* @param {Bool} try load all aliases
+	 */
+	function tryLoadLuaAliases(rFunc, files, callBack, onEnd, loadAll = false) {
+
+		const totalFiles = files.length;
+		if (totalFiles === 0) {
+			if (typeof onEnd === 'function') {
+				onEnd();
+			}
+			return;
+		}
+
+		let finishedCount = 0;
+		let failedCount = 0;
+		const trackedOnEnd = (isSuccess) => {
+			finishedCount++;
+			if (!isSuccess) {
+				failedCount++;
+			}
+
+			if (finishedCount === totalFiles || isSuccess && !loadAll) {
+				if (failedCount === totalFiles) {
+					console.error(`[tryLoadLuaAliases] ERROR: All ${totalFiles} tryes to find ${files[0]} failed. Verify your ${files[0]} filename.`);
+				}
+				if (typeof onEnd === 'function') {
 					onEnd();
 				}
-			},
-			onEnd
-		);
+			}
+		};
+		
+		function tryNext(index) {
+			if (index >= totalFiles) {
+				return;
+			}
+
+			if (files[index].indexOf('System/') !== 0 && files[index].indexOf('System\\') !== 0)   
+				files[index] = 'System/' + files[index];  
+			
+			rFunc(files[index], callBack, (isSuccess) => {
+				trackedOnEnd(isSuccess); //await last lua parsing
+				if((isSuccess && loadAll) || !isSuccess)
+					tryNext(index + 1);
+			}); 
+		}
+		tryNext(0);
 	}
 
 	/* Load ItemInfo file to object
@@ -592,8 +745,13 @@ define(function (require) {
 	* @author alisonrag
 	*/
 	function loadItemInfo(filename, callback, onEnd) {
-		Client.loadFile(filename,
-			async function (file) {
+
+		const loadPromise = new Promise((resolve, reject) => {
+			Client.loadFile(filename, resolve, reject);
+		});
+		
+		loadPromise.then(async (file) => {
+				let wasSuccessful = false;
 				try {
 					console.log('Loading file "' + filename + '"...');
 					// check if file is ArrayBuffer and convert to Uint8Array if necessary
@@ -602,7 +760,7 @@ define(function (require) {
 					const ctx = lua.ctx;
 					// create decoders
 					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
-					let userStringDecoder = new TextEncoding.TextDecoder('euc-kr'); // TODO: Add keys to config
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
 					// create itemInfo required functions in context
 					ctx.AddItem = (ItemID, unidentifiedDisplayName, unidentifiedResourceName, identifiedDisplayName, identifiedResourceName, slotCount, ClassNum) => {
 						ItemTable[ItemID] = {
@@ -643,66 +801,74 @@ define(function (require) {
 						return 1;
 					};
 					// mount file
-					lua.mountFile('iteminfo.lub', buffer);
+					lua.mountFile(filename, buffer);
 					// execute file
-					await lua.doFile('iteminfo.lub');
+					await lua.doFile(filename);
 					// create and execute our own main function
 					// this is necessary because some servers has main function on itemInfo.lub and others load it from itemInfo_f.lub
 					// doing this way we avoid to have to load the other file
 					// on my tests dont care if the main() is on itemInfo.lub or itemInfo_f.lub the content is always the same
 					lua.doStringSync(`
 						function main_item()
+							_processedItems = _processedItems or {} 
 							for ItemID, DESC in pairs(tbl) do
-								result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName, DESC.unidentifiedResourceName, DESC.identifiedDisplayName, DESC.identifiedResourceName, DESC.slotCount, DESC.ClassNum)
-								if not result then
-								return false, msg
-								end
-								for k, v in pairs(DESC.unidentifiedDescriptionName) do
-								result, msg = AddItemUnidentifiedDesc(ItemID, v)
-								if not result then
-									return false, msg
-								end
-								end
-								for k, v in pairs(DESC.identifiedDescriptionName) do
-								result, msg = AddItemIdentifiedDesc(ItemID, v)
-								if not result then
-									return false, msg
-								end
-								end
-								if nil ~= DESC.EffectID then
-								result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
-								if not result then
-									return false, msg
-								end
-								end
-								if nil ~= DESC.costume then
-								result, msg = AddItemIsCostume(ItemID, DESC.costume)
-								if not result then
-									return false, msg
-								end
-								end
-								if nil ~= DESC.PackageID then
-								result, msg = AddItemPackageID(ItemID, DESC.PackageID)
-								if not result then
-									return false, msg
-								end
+								if not _processedItems[ItemID] and #DESC.identifiedDescriptionName > 0 then
+									_processedItems[ItemID] = true 
+									result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName, DESC.unidentifiedResourceName, DESC.identifiedDisplayName, DESC.identifiedResourceName, DESC.slotCount, DESC.ClassNum)
+									if not result then
+										return false, msg
+									end
+									for k, v in pairs(DESC.unidentifiedDescriptionName) do
+										result, msg = AddItemUnidentifiedDesc(ItemID, v)
+										if not result then
+											return false, msg
+										end
+									end
+									for k, v in pairs(DESC.identifiedDescriptionName) do
+										result, msg = AddItemIdentifiedDesc(ItemID, v)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.EffectID then
+										result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.costume then
+										result, msg = AddItemIsCostume(ItemID, DESC.costume)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.PackageID then
+										result, msg = AddItemPackageID(ItemID, DESC.PackageID)
+										if not result then
+											return false, msg
+										end
+									end
 								end
 							end
 							return true, "good"
 							end
 						main_item()
 						`);
+					wasSuccessful = true; 
 				} catch (error) {
 					console.error('[loadItemInfo] Error: ', error);
 				} finally {
 					// release file from memmory
-					lua.unmountFile('iteminfo.lub');
+					lua.unmountFile(filename);
 					// call onEnd
-					onEnd();
+					onEnd(wasSuccessful);
 				}
-			},
-			onEnd
-		);
+		}).catch((error) => {
+			if (typeof onEnd === 'function') {
+				onEnd(false);
+			}
+
+		});
 	}
 
 	/**
@@ -727,7 +893,7 @@ define(function (require) {
 
 					// create decoders
 					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
-					let userStringDecoder = new TextEncoding.TextDecoder('euc-kr'); // TODO: Add keys to config
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
 
 					// create required functions in context
 					ctx.AddLaphineSysItem = (key, ItemID, NeedCount, NeedRefineMin, NeedRefineMax, NeedSource_String) => {
@@ -819,7 +985,7 @@ define(function (require) {
 
 					// create decoders
 					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
-					let userStringDecoder = new TextEncoding.TextDecoder('euc-kr'); // TODO: Add keys to config
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
 
 					// create required functions in context
 					ctx.AddLaphineUpgradeItem = (key, ItemID, NeedCount, NeedRefineMin, NeedRefineMax, NeedSource_String, NeedOptionNumMin, NotSocketEnchantItem) => {
@@ -1361,6 +1527,409 @@ define(function (require) {
 		);  
 	}
 
+	/**  
+	 * Loads skillinfolist.lub which replaces part of DB/Skills/SkillInfo.js  
+	 *  
+	 * @param {string} filename - The name of the file to load.  
+	 * @param {function} callback - The function to invoke with the loaded data.  
+	 * @param {function} onEnd - The function to invoke when loading is complete.  
+	 * @return {void}  
+	 */
+	function loadSkillInfoList(filename, callback, onEnd) {
+		Client.loadFile(filename,
+			async function (file) {
+				try {
+					console.log('Loading file "' + filename + '"...');
+
+					// check if file is ArrayBuffer and convert to Uint8Array if necessary  
+					let buffer = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;
+
+					// get context, a proxy. It will be used to interact with lua conveniently  
+					const ctx = lua.ctx;
+
+					// Create automatic JT_ mappings  
+					const jobIdWithJT = { ...JobId };  
+					for (const [key, value] of Object.entries(JobId)) {  
+						jobIdWithJT[`JT_${key}`] = value;  
+					}  
+					ctx.JOBID = jobIdWithJT; 
+
+					// create decoders  
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
+					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
+
+					// create required functions in context  
+					ctx.AddSkillInfo = (skillId, resName, skillName, maxLv, spAmount, bSeperateLv, attackRange, skillScale) => {
+						// Convert to format expected by SkillInfo.js  
+						SkillInfo[skillId] = {
+							Name: iso88591Decoder.decode(resName),
+							SkillName: userStringDecoder.decode(skillName),
+							MaxLv: maxLv,
+							SpAmount: spAmount,
+							bSeperateLv: bSeperateLv,
+							AttackRange: attackRange,
+							SkillScale: skillScale
+						};
+						return 1;
+					};
+
+					// mount file  
+					lua.mountFile('skillinfolist.lub', buffer);
+
+					// execute file  
+					await lua.doFile('skillinfolist.lub');
+
+					// create and execute our own main function  
+					lua.doStringSync(`  
+					function main_skillInfoList()  
+						if not SKILL_INFO_LIST then  
+							return false, "Error: SKILL_INFO_LIST is nil or not a table"  
+						end  
+					
+						for skillId, skillData in pairs(SKILL_INFO_LIST) do 
+							local resName = skillData[1] or "" 
+							local skillName = skillData.SkillName or ""  
+							local maxLv = skillData.MaxLv or 1  
+							local spAmount = skillData.SpAmount or {}  
+							local bSeperateLv = skillData.bSeperateLv or false  
+							local attackRange = skillData.AttackRange or {}  
+							local skillScale = skillData.SkillScale or {}  
+					
+							result, msg = AddSkillInfo(skillId, resName, skillName, maxLv, spAmount, bSeperateLv, attackRange, skillScale)  
+							if not result then  
+								return false, msg  
+							end  
+						end  
+						return true, "good"  
+						end
+					main_skillInfoList()  
+					`);  
+
+				} catch (error) {
+					console.error('[loadSkillInfoList] Error: ', error);
+				} finally {
+					// release file from memory  
+					lua.unmountFile('skillinfolist.lub');
+					// call onEnd  
+					onEnd();
+				}
+			},
+			onEnd
+		);
+	}
+	
+	/**  
+	* Loads jobinheritlist.lub and skilltreeview.lub which replaces DB/Skills/SkillTreeView.js  
+	*  
+	* @param {string} filename - The name of the file to load.  
+	* @param {function} callback - The function to invoke with the loaded data.  
+	* @param {function} onEnd - The function to invoke when loading is complete.  
+	* @return {void}  
+	*/  
+	function loadSkillTreeView(filename, callback, onEnd) {  
+		// First load jobinheritlist.lub  
+		Client.loadFile(DB.LUA_PATH + 'skillinfoz/jobinheritlist.lub',  
+			async function (file) {  
+				try {  
+					console.log(`Loading file ${DB.LUA_PATH}skillinfoz/jobinheritlist.lub...`);  
+					let buffer = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;  
+					const ctx = lua.ctx;  
+					
+					// Mount and execute jobinheritlist.lub  
+					lua.mountFile('jobinheritlist.lub', buffer);  
+					await lua.doFile('jobinheritlist.lub');  
+					
+					// Now load skilltreeview.lub  
+					loadSkillTreeViewData(filename, callback, onEnd);  
+					
+				} catch (error) {  
+					console.error('[loadSkillTreeView - jobinheritlist] Error: ', error);  
+					onEnd();  
+				}  
+			},  
+			onEnd  
+		);  
+	}  
+	
+	function loadSkillTreeViewData(filename, callback, onEnd) {  
+		Client.loadFile(filename,  
+			async function (file) {  
+				try {  
+					console.log('Loading file "' + filename + '"...');  
+					let buffer = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;  
+					const ctx = lua.ctx;  
+					// Create automatic JT_ mappings  
+					const jobIdWithJT = { ...JobId };  
+					for (const [key, value] of Object.entries(JobId)) {  
+						jobIdWithJT[`JT_${key}`] = value;  
+					}  
+					ctx.JOBID = jobIdWithJT; 
+					
+					// Function to add skill tree data using job hierarchy from jobinheritlist.lub  
+					ctx.AddSkillTreeView = function (jobId, beforeJob) {  
+						// Calculate list and beforeJob from inheritance chain  
+						let list = 1;						
+						// TODO: Find another way to do that
+						if (jobId === JobId.NOVICE) {  
+							list = 1;  
+						} else if (jobId < JobId.KNIGHT || jobId === JobId.TAEKWON || (jobId >= JobId.SUPERNOVICE && jobId <= JobId.NINJA) || jobId == JobId.DO_SUMMONER ) {  
+							list = 1;  
+						} else if (jobId < JobId.NOVICE_H || jobId == JobId.STAR || jobId == JobId.LINKER || (jobId >= JobId.KAGEROU && jobId <= JobId.REBELLION) || jobId == JobId.SUPERNOVICE2 || jobId == JobId.SPIRIT_HANDLER ) {  
+							list = 2;  
+						} else if ((jobId <= JobId.THIEF_H && jobId >= JobId.NOVICE_H) || (jobId >= JobId.NOVICE_B && jobId <= JobId.THIEF_B) || jobId == JobId.DO_SUMMONER_B || jobId == JobId.NINJA_B || jobId == JobId.TAEKWON_B || jobId == JobId.GUNSLINGER_B) {  
+							list = 1;  
+						} else if (jobId < JobId.RUNE_KNIGHT || (jobId >= JobId.KNIGHT_B && jobId <= JobId.DANCER_B) || (jobId >= JobId.KAGEROU_B && jobId <= JobId.REBELLION_B) ) {  
+							list = 2;  
+						} else if (jobId < JobId.DRAGON_KNIGHT || jobId == JobId.STAR_EMPEROR || jobId == JobId.SOUL_REAPER || (jobId >= JobId.RUNE_KNIGHT_B && jobId <= JobId.SHADOW_CHASER_B) || jobId === JobId.EMPEROR_B || jobId === JobId.REAPER_B ) {  
+							list = 3;  
+						} else if (jobId <= JobId.TROUVERE || ( jobId >= JobId.SKY_EMPEROR && jobId <= JobId.HYPER_NOVICE) ) {  
+							list = 4;  
+						} else {  
+							list = 1;
+							console.error(`[loadSkillTreeViewData] Failed to find inherith list job: (${jobId})`);
+						}
+						// Create the skill tree entry  
+						const entry = {  
+							list: list,  
+							beforeJob: beforeJob  
+						};  
+						
+						SkillTreeView[jobId] = entry;  
+						return 1;  
+					};  
+					
+					ctx.AddSkillToJob = function (jobId, pos, skillId) {  
+						if (SkillTreeView[jobId]) {  
+							SkillTreeView[jobId][skillId] = Number(pos);  
+						}  
+						return 1;  
+					};
+	
+					lua.doStringSync(`
+						JobSkillTab = {}
+					
+						function JobSkillTab.ChangeSkillTabName(in_job, in_1sttab, in_2ndtab, in_3rdtab, in_4thtab)
+							local tbl = {
+								job = in_job,
+								TabName1st = in_1sttab,
+								TabName2nd = in_2ndtab,
+								TabName3rd = in_3rdtab,
+								TabName4th = in_4thtab
+							}
+							JobSkillTab[#JobSkillTab + 1] = tbl
+							return true
+						end
+					`);
+	
+					lua.mountFile('skilltreeview.lub', buffer);  
+					await lua.doFile('skilltreeview.lub');  
+	
+					lua.doStringSync(`    
+						function main_skillTreeView()    
+							if not SKILL_TREEVIEW_FOR_JOB then    
+								return false, "Error: SKILL_TREEVIEW_FOR_JOB is nil or not a table"    
+							end    
+					
+							for jobId, skillData in pairs(SKILL_TREEVIEW_FOR_JOB) do      
+								local beforeJob = JOB_INHERIT_LIST[jobId] or nil  
+								result, msg = AddSkillTreeView(jobId, beforeJob)      
+								if not result then      
+									return false, msg      
+								end   
+								
+								for pos, skillId in pairs(skillData) do    
+									result, msg = AddSkillToJob(jobId, pos, skillId)    
+									if not result then    
+										return false, msg    
+									end    
+								end  
+							end    
+							return true, "good"    
+						end    
+						
+						main_skillTreeView()    
+					`);
+	
+				} catch (error) {  
+					console.error('[loadSkillTreeView] Error: ', error);  
+				} finally {  
+					lua.unmountFile('skilltreeview.lub');  
+					lua.unmountFile('jobinheritlist.lub');  
+					onEnd();  
+				}  
+			},  
+			onEnd  
+		);  
+	}
+
+	/**
+	* Load State Icon Info (StatusInfo) from Lua files
+	* Loads efstids.lub, stateiconimginfo.lub, and stateiconinfo.lub sequentially,
+	* synchronizing EFST_IDs with StatusConst and populating the StatusInfo table.
+	*
+	* @param {string} basePath - Directory path (e.g., DB.LUA_PATH + 'stateicon/')
+	* @param {function} callback - (Unused/Legacy)
+	* @param {function} onEnd - Function to run when done
+	*/
+	function loadStateIconInfo(basePath, callback, onEnd) {
+		const files = [
+			'efstids.lub',
+			'stateiconimginfo.lub',
+			'stateiconinfo.lub'
+		];
+
+		let loadedBuffers = [];
+
+		const dirPath = basePath.endsWith('/') ? basePath : basePath + '/';
+
+		function loadNext(index) {
+			if (index >= files.length) {
+				processLuaData();
+				return;
+			}
+
+			let fullPath = dirPath + files[index];
+			console.log('Loading file "' + fullPath + '"...');
+
+			Client.loadFile(fullPath, function(data) {
+				loadedBuffers.push({ name: files[index], data: data });
+				loadNext(index + 1);
+			}, function() {
+				console.error('[loadStateIconInfo] - Failed to load ' + fullPath);
+				if (onEnd) onEnd();
+			});
+		}
+	
+		async function processLuaData() {
+			try {
+				const ctx = lua.ctx;
+				const userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
+				const isoDecoder = new TextEncoding.TextDecoder('iso-8859-1');
+
+				ctx.SetStatusConstants = (sourceTable) => {
+					if (typeof sourceTable === 'object' && sourceTable !== null) {
+						// Populate SC with constants from the Lua table (e.g., EFST_PROVOKE -> SC.PROVOKE)
+						for (const key in sourceTable) {
+							if (key.startsWith('EFST_')) {
+								const jsKey = key.replace('EFST_', ''); 
+								SC[jsKey] = sourceTable[key];
+							}
+						}
+						// Add BLANK back if it was cleared and not defined in LUB
+						if (!SC.BLANK) {
+							SC.BLANK = -1;
+						}
+					} else {
+						console.error('[loadStateIconInfo]: EFST_IDs table not received from Lua. Cannot synchronize StatusConst.');
+					}
+					return 1;
+				}
+
+				ctx.SetStatusInfo = (id, haveTimeLimit, posTimeLimitStr) => {
+					if (!StatusInfo[id]) StatusInfo[id] = {};
+					StatusInfo[id].haveTimeLimit = haveTimeLimit;
+					StatusInfo[id].posTimeLimitStr = posTimeLimitStr;
+					StatusInfo[id].descript = [];
+					return 1;
+				};
+
+				ctx.AddStatusDesc = (id, desc, r, g, b) => {
+					if (!StatusInfo[id]) return 0;
+					let text = userStringDecoder.decode(desc);
+					let color = null;
+					if (r >= 0 && g >= 0 && b >= 0) {
+						color = `rgb(${r}, ${g}, ${b})`;
+					}
+					StatusInfo[id].descript.push([text, color]);
+					return 1;
+				};
+
+				ctx.SetStatusIcon = (id, iconName) => {
+					let icon = isoDecoder.decode(iconName);
+					if (!StatusInfo[id]) StatusInfo[id] = { descript: [] }; 
+					StatusInfo[id].icon = icon;
+					return 1;
+				};
+
+				for (let i = 0; i < loadedBuffers.length; i++) {
+					let f = loadedBuffers[i];
+					let buffer = (f.data instanceof ArrayBuffer) ? new Uint8Array(f.data) : f.data;
+					lua.mountFile(f.name, buffer);
+					await lua.doFile(f.name);
+
+					// This prevents the 'table index is nil' crash in stateiconimginfo.lub.
+					if (f.name === 'efstids.lub') {
+						await lua.doString(`
+							if EFST_IDs then
+								__EFST_IDS_ORIGINAL = EFST_IDs 
+
+								EFST_IDs = setmetatable({}, {
+									__index = function(t, k)
+										local id = __EFST_IDS_ORIGINAL[k]
+										return id ~= nil and id or 0 
+									end
+								})
+							end
+						`);
+					}
+				}
+
+				lua.doStringSync(`
+					function extract_status_info()
+						-- Sync StatusConst (SC) with the full list of EFST_IDs from the original table
+						if type(__EFST_IDS_ORIGINAL) == "table" then
+							SetStatusConstants(__EFST_IDS_ORIGINAL)
+						end
+
+						-- Process Basic Info & Descriptions
+						if StateIconList ~= nil then
+							for id, info in pairs(StateIconList) do
+								SetStatusInfo(id, info.haveTimeLimit, info.posTimeLimitStr)
+
+								if info.descript ~= nil then
+									for _, descLine in ipairs(info.descript) do
+										local text = descLine[1]
+										local colorData = descLine[2]
+										local r, g, b = -1, -1, -1
+
+										if type(colorData) == "table" and #colorData >= 3 then
+											r = colorData[1]
+											g = colorData[2]
+											b = colorData[3]
+										end
+
+										AddStatusDesc(id, text, r, g, b)
+									end
+								end
+							end
+						end
+
+						-- Process Icons 
+						if StateIconImgList ~= nil then
+							for priorityId, list in pairs(StateIconImgList) do 
+								if type(list) == "table" then
+									for id, iconName in pairs(list) do
+										SetStatusIcon(id, iconName)
+									end
+								end
+							end
+						end
+					end
+
+					extract_status_info()
+				`);
+	
+			} catch (e) {
+				console.error("[loadStateIconInfo] Lua Error:", e);
+			} finally {
+				loadedBuffers.forEach(f => lua.unmountFile(f.name));
+				if (onEnd) onEnd();
+			}
+		}
+	
+		loadNext(0);
+	}
+	
 	/**
 	 * Remove LUA comments
 	 *
@@ -1539,12 +2108,12 @@ define(function (require) {
 				// get context
 				const ctx = lua.ctx;
 
-				// create a decoder for iso-8859-1
-				let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
+				// create a decoder
+				let userDecoder = new TextEncoding.TextDecoder(userCharpage);
 
 				// create context function
 				ctx.addKeyAndValueToTable = (key, value) => {
-					table[key] = iso88591Decoder.decode(value);
+					table[key] = userDecoder.decode(value);
 					return 1;
 				}
 
@@ -1552,7 +2121,7 @@ define(function (require) {
 				ctx.addKeyAndMoreValuesToTable = (key, value) => {
 					if (!table[key])
 						table[key] = "";
-					table[key] += iso88591Decoder.decode(value) + "\n";
+					table[key] += userDecoder.decode(value) + "\n";
 					return 1;
 				}
 
@@ -1706,8 +2275,11 @@ define(function (require) {
 	 * @param {function} onEnd - The function to invoke when loading is complete.
 	 */
 	function loadMapTbl(filename, callback, onEnd) {
-		Client.loadFile(filename,
-			async function (file) {
+		const loadPromise = new Promise((resolve, reject) => {
+			Client.loadFile(filename, resolve, reject);
+		});
+		
+		loadPromise.then(async (file) => {
 				try {
 					console.log('Loading file "' + filename + '"...');
 					// check if file is ArrayBuffer and convert to Uint8Array if necessary
@@ -1718,7 +2290,7 @@ define(function (require) {
 
 					// create decoders
 					let iso88591Decoder = new TextEncoding.TextDecoder('iso-8859-1');
-					let userStringDecoder = new TextEncoding.TextDecoder('euc-kr'); // TODO: Add keys to config
+					let userStringDecoder = new TextEncoding.TextDecoder(userCharpage);
 
 					// create mapInfo required functions in context
 					ctx.AddMapDisplayName = (name, displayName, notify_enter) => {
@@ -1754,10 +2326,10 @@ define(function (require) {
 					};
 
 					// mount file
-					lua.mountFile('mapInfo.lub', buffer);
+					lua.mountFile(filename, buffer);
 
 					// execute file
-					await lua.doFile('mapInfo.lub');
+					await lua.doFile(filename);
 
 					// execute main function
 					lua.doStringSync(`main()`);
@@ -1765,14 +2337,14 @@ define(function (require) {
 					console.error('[loadMapTbl] Error: ', error);
 				} finally {
 					// release file from memmory
-					lua.unmountFile('mapInfo.lub');
+					lua.unmountFile(filename);
 					// call onEnd
-					onEnd();
+					onEnd(true);
 				}
-			},
-			onEnd
-		);
-	};
+		}).catch((error) => {
+			onEnd(false);
+		});
+	}
 
 	/**
 	 * Fog entry parser
@@ -2733,7 +3305,7 @@ define(function (require) {
 	 * @param {number} cart id
 	 */
 	DB.getCartPath = function getCartPath(num) {
-		var id = Math.max(Math.min(num, 9), 0); //cap 0-9
+		var id = Math.max(Math.min(num, 13), 0); //cap 0-13
 		return [
 			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbd\xb4\xb3\xeb\xbc\xd5\xbc\xf6\xb7\xb9',
 			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb9',
@@ -2744,7 +3316,11 @@ define(function (require) {
 			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb95',
 			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb96',
 			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb97',
-			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb98'
+			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xd5\xbc\xf6\xb7\xb98',
+			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xbc\xb1\xb9\xb0\xbb\xf3\xc0\xda\xc4\xab\xc6\xae',
+			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xc6\xf7\xb8\xb5\xbd\xc6\xc0\xba\xc4\xab\xc6\xae',
+			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xc6\xf7\xb8\xb5\xc4\xab\xc6\xae',
+			'data/sprite/\xc0\xcc\xc6\xd1\xc6\xae/\xb8\xb6\xb5\xb5\xc4\xab\xc6\xae'
 		][id];
 	};
 
@@ -2922,6 +3498,10 @@ define(function (require) {
 			var item = ItemTable[itemid] || unknownItem;
 
 			if (!item._decoded) {
+				var servers = Configs.get('servers', []);
+				var langType = (servers[0] && servers[0].langtype) ? parseInt(servers[0].langtype, 10) : 1;
+				var autoEncoding = TextEncoding.detectEncodingByLangtype(langType, Configs.get('disableKorean'));
+				TextEncoding.setCharset(autoEncoding);
 				item.identifiedDescriptionName = (item.identifiedDescriptionName && item.identifiedDescriptionName instanceof Array) ? TextEncoding.decodeString(item.identifiedDescriptionName.join('\n')) : '';
 				item.unidentifiedDescriptionName = (item.unidentifiedDescriptionName && item.unidentifiedDescriptionName instanceof Array) ? TextEncoding.decodeString(item.unidentifiedDescriptionName.join('\n')) : '';
 				item.identifiedDisplayName = TextEncoding.decodeString(item.identifiedDisplayName);
@@ -3970,6 +4550,308 @@ define(function (require) {
 		return NaviNpcDistanceTable;
 	};
 
+	DB.createItemLink = function createItemLink(item) {
+		if (!item) {
+		  return null;
+		}
+	  
+		// Handle legacy formats (ITEMLINK and ITEM)
+		if (PACKETVER.value < 20151104) {
+		  return `<ITEMLINK>${item.name}<INFO>${item.ITID}</INFO></ITEMLINK>`;
+		}
+	  
+		if (PACKETVER.value < 20160113) {
+		  return `<ITEM>${item.name}<INFO>${item.ITID}</INFO></ITEM>`;
+		}
+	  
+		// Handle ITEML format (newest, most complex)
+		let data = "";
+	  
+		// Encode equipment location (5 chars)
+		data += Base62.encode(item.location || 0).padStart(5, "0");
+	  
+		// Encode is equipment flag (1 char)
+		const isEquip = item.type === 5 ? "1" : "0";
+		data += isEquip;
+	  
+		// Encode item ID (variable length)
+		data += Base62.encode(item.ITID || 512);
+	  
+		// Encode refine level (optional, starts with %)
+		if (item.RefiningLevel > 0) {
+		  data += "%";
+		  data += Base62.encode(item.RefiningLevel).padStart(2, "0");
+		}
+	  
+		// Encode item sprite number (optional, starts with &)
+		if (PACKETVER.value >= 20161116) {
+		  data += "&";
+		  let spriteNumber = item.wItemSpriteNumber ? item.wItemSpriteNumber : 0;
+		  data += Base62.encode(spriteNumber).padStart(2, "0");
+		}
+	  
+		// Encode enchant grade (optional, starts with ')
+		if (PACKETVER.value >= 20200724 && item.enchantgrade > 0) {
+		  data += "'";
+		  data += Base62.encode(item.enchantgrade).padStart(2, "0");
+		}
+	  
+		// Determine separators based on packet version
+		let card_sep, optid_sep, optpar_sep, optval_sep;
+		if (PACKETVER.value >= 20200724) {
+		  card_sep = ")";
+		  optid_sep = "+";
+		  optpar_sep = ",";
+		  optval_sep = "-";
+		} else if (PACKETVER.value >= 20161116) {
+		  card_sep = "(";
+		  optid_sep = "*";
+		  optpar_sep = "+";
+		  optval_sep = ",";
+		} else {
+		  card_sep = "'";
+		  optid_sep = ")";
+		  optpar_sep = "*";
+		  optval_sep = "+";
+		}
+	  
+		// Encode cards (4 cards)
+		const cardKeys = ["card1", "card2", "card3", "card4"];
+		for (let i = 0; i < 4; i++) {
+		  const cardValue = item.slot?.[cardKeys[i]] || 0;
+		  if (cardValue > 0) {
+			data += card_sep;
+			data += Base62.encode(cardValue).padStart(2, "0");
+		  }
+		}
+	  
+		// Encode random options (up to 5)
+		if (item.Options) {
+			item.Options.forEach(option => {
+				if (option.index > 0) {
+					data += optid_sep;
+					data += Base62.encode(option.index).padStart(2, "0");
+					data += optpar_sep;
+					data += Base62.encode(option.param).padStart(2, "0");
+					data += optval_sep;
+					data += Base62.encode(option.value).padStart(2, "0");
+				}
+			});
+		}
+
+		return `<ITEML>${data}</ITEML>`;
+	  };
+	  
+	  // <ITEMLINK> (Oldest format)
+	  // Used for NPC message item links in clients from 2010-01-01 to before 2015-11-04.
+	  // example: <ITEMLINK>Display Name<INFO>Item ID</INFO></ITEMLINK>
+	  // <ITEM> (Middle format)
+	  // Used for NPC message item links in clients from 2015-11-04 onwards, replacing <ITEMLINK>.
+	  // example: <ITEM>Display Name<INFO>Item ID</INFO></ITEM>
+	  // <ITEML> (Newest format)
+	  // Used for player-generated item links (like Shift+Click from inventory) in clients from 2016-01-13 onwards.
+	  // example: <ITEML>encoded_item_data</ITEML>
+	  DB.parseItemLink = function parseItemLink(itemLink) {
+		if (!itemLink) {
+		  return null;
+		}
+	  
+		let item = {
+		  ITID: 512,
+		  name: "Unknown Item",
+		  type: 1,
+		  location: 0,
+		  slot: {
+			card1: 0,
+			card2: 0,
+			card3: 0,
+			card4: 0,
+		  },
+		  nRandomOptionCnt: 0,
+		  Options: [{ index: 0, value: 0, param: 0 }],
+		  RefiningLevel: 0,
+		  enchantgrade: 0,
+		  IsIdentified: 1,
+		  IsDamaged: 0,
+		  wItemSpriteNumber: 0,
+		};
+	  
+		let content = null;
+	  
+		// parse ITEMLINK and ITEM format
+		if (itemLink.includes("<ITEMLINK>") || itemLink.includes("<ITEM>")) {
+		  content =
+			itemLink.match(/<ITEMLINK>(.*?)<INFO>(.*?)<\/INFO><\/ITEMLINK>/) ||
+			itemLink.match(/<ITEM>(.*?)<INFO>(.*?)<\/INFO><\/ITEM>/);
+		  if (content) {
+			item.ITID = content[2];
+			item.name = content[1];
+			return item;
+		  }
+	  
+		  // return unknown item
+		  return item;
+		}
+	  
+		if (itemLink.includes("<ITEML>")) {
+		  content = itemLink.match(/<ITEML>(.*?)<\/ITEML>/);
+		} else {
+		  return item;
+		}
+	  
+		const data = content[1];
+		let pos = 0;
+	  
+		try {
+		  // Parse equipment location (5 chars)
+		  item.location = Base62.decode(data.substr(pos, 5));
+		  pos += 5;
+	  
+		  // Parse is equipment flag (1 char)
+		  const isEquip = data[pos] === "1";
+	  
+		  // TODO: add equipment type
+		  item.type = isEquip ? 5 : 0; // Default to armor type if equipment
+		  pos += 1;
+	  
+		  // Parse item ID (variable length until special char)
+		  let itemIdStr = "";
+		  while (pos < data.length && !"%&')(*+,-".includes(data[pos])) {
+			itemIdStr += data[pos];
+			pos++;
+		  }
+		  item.ITID = Base62.decode(itemIdStr);
+	  
+		  // Parse refine level (optional, starts with %)
+		  if (pos < data.length && data[pos] === "%") {
+			pos++; // Skip %
+			item.RefiningLevel = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+		  }
+	  
+		  if (PACKETVER.value >= 20161116 && pos < data.length && data[pos] === "&") {
+			pos++; // Skip &
+			item.wItemSpriteNumber = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+		  }
+	  
+		  if (PACKETVER.value >= 20200724 && pos < data.length && data[pos] === "'") {
+			pos++; // Skip '
+			item.enchantgrade = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+		  }
+	  
+		  // Determine separators based on detected packet version
+		  let card_sep, optid_sep, optpar_sep, optval_sep;
+		  if (PACKETVER.value >= 20200724) {
+			card_sep = ")";
+			optid_sep = "+";
+			optpar_sep = ",";
+			optval_sep = "-";
+		  } else if (PACKETVER.value >= 20161116) {
+			card_sep = "(";
+			optid_sep = "*";
+			optpar_sep = "+";
+			optval_sep = ",";
+		  } else {
+			card_sep = "'";
+			optid_sep = ")";
+			optpar_sep = "*";
+			optval_sep = "+";
+		  }
+	  
+		  // Parse cards
+		  const cardKeys = ["card1", "card2", "card3", "card4"];
+		  let cardIndex = 0;
+	  
+		  while (cardIndex < 4 && pos < data.length) {
+			if (data[pos] !== card_sep) break; // não tem mais carta
+	  
+			pos++; // skip
+	  
+			// take all characters that are not card separators or random option separators
+			let cardStr = "";
+			while (pos < data.length) {
+			  const c = data[pos];
+			  // stop if next separator is a card separator or random option separator
+			  if (c === card_sep || c === optid_sep) {
+				break;
+			  }
+			  // stop if next separator is a future separator (security)
+			  if ("%&'()*+,-".includes(c)) {
+				break;
+			  }
+			  cardStr += c;
+			  pos++;
+			}
+	  
+			// if nothing was taken, it's an empty card (0)
+			if (cardStr === "" || cardStr === "00") {
+			  item.slot[cardKeys[cardIndex]] = 0;
+			} else {
+			  item.slot[cardKeys[cardIndex]] = Base62.decode(cardStr);
+			}
+	  
+			cardIndex++;
+		  }
+	  
+		  // fill the cards that didn't exist with 0
+		  while (cardIndex < 4) {
+			item.slot[cardKeys[cardIndex]] = 0;
+			cardIndex++;
+		  }
+	  
+		  // Parse random options (variable count)
+		  let optionIdx = 0;
+		  while (pos < data.length && data[pos] === optid_sep && optionIdx < 5) {
+			pos++; // Skip option ID separator
+			const optId = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+	  
+			if (pos >= data.length || data[pos] !== optpar_sep) break;
+			pos++; // Skip param separator
+			const optParam = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+	  
+			if (pos >= data.length || data[pos] !== optval_sep) break;
+			pos++; // Skip value separator
+			const optValue = Base62.decode(data.substr(pos, 2));
+			pos += 2;
+	  
+			item.Options.push({
+			  index: optId,
+			  value: optValue,
+			  param: optParam,
+			});
+			optionIdx++;
+		  }
+	  
+		  // Fill remaining option slots with zeros
+		  while (item.Options.length < 5 + 1) {
+			item.Options.push({ index: 0, value: 0, param: 0 });
+		  }
+	  
+		  item.nRandomOptionCnt = optionIdx;
+	  
+		  item.name = DB.getItemName(item);
+	  
+		  return item;
+		} catch (error) {
+		  console.error("Error parsing item link:", error);
+		  return null;
+		}
+	  };
+	  
+	  DB.getItemNameFromLink = function getItemNameFromLink(itemLink) {
+		if (!itemLink) {
+		  return null;
+		}
+	  
+		let item = DB.parseItemLink(itemLink);
+		return item.name;
+	  };
+	  
+	
 	/**
 	 * Export
 	 */
