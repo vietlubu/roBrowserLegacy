@@ -185,6 +185,18 @@ function(     Client,            Renderer,            SpriteRenderer,           
 				return clean;
 			}
 
+			// Check if sprite is fully loaded with frames
+			if (!spr.frames || spr.frames.length === 0) {
+				console.warn('[EntityAttachments] Sprite file not fully loaded:', attachment.spr);
+				return clean;
+			}
+
+			// Check if action is fully loaded
+			if (!act.actions || act.actions.length === 0) {
+				console.warn('[EntityAttachments] Action file not fully loaded:', attachment.act);
+				return clean;
+			}
+
 			this.entity.effectColor[3]  = attachment.opacity;
 			if(!attachment.position){
 				position[1] = attachment.head ? -100 : 0;

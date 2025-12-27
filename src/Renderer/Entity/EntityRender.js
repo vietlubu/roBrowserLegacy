@@ -388,6 +388,16 @@ define( function( require )
 				return;
 			}
 
+			// Check if sprite is fully loaded with frames
+			if (!spr.frames || spr.frames.length === 0) {
+				return;
+			}
+
+			// Check if action is fully loaded
+			if (!act.actions || act.actions.length === 0) {
+				return;
+			}
+
 			// If palette, load palette, else get back sprite palette
 			var pal = (files.pal && Client.loadFile(files.pal)) || spr;
 
@@ -662,6 +672,11 @@ define( function( require )
 	{
 		// If there is nothing to render
 		if (layer.index < 0) {
+			return;
+		}
+
+		// Check if sprite frames are loaded
+		if (!spr || !spr.frames || !spr.frames[layer.index]) {
 			return;
 		}
 
