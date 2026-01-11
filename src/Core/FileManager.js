@@ -52,7 +52,6 @@ define(function( require )
 	 */
 	FileManager.filesAlias = {};
 
-
 	/**
 	 * Initialize file manager with a list of files
 	 *
