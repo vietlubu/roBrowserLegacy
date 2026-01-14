@@ -4,6 +4,7 @@
 	"scripts": {
 		"serve": "live-server ./dist/Web",
 		"live": "live-server . --open=./applications/browser-examples",
+		"local": "php -S 0.0.0.0:8800",
 		"pwa": "live-server . --open=./applications/pwa",
 		"tools": "live-server . --open=./applications/tools",
 		"nw": "nw .",
